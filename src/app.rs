@@ -10,13 +10,13 @@ impl Default for AudioFilterApp {
 }
 
 impl AudioFilterApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Default::default()
     }
 }
 
 impl eframe::App for AudioFilterApp {
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
 
     }
 
