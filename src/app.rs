@@ -41,7 +41,7 @@ impl eframe::App for AudioFilterApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let volume_slider = ui.add(egui::Slider::new(&mut self.vol, 0.0..=1.0).text("Volume").logarithmic(true));
+            let volume_slider = ui.add(egui::Slider::new(&mut self.vol, 0.0..=1.0).text("Volume"));
             let freq_slider = ui.add(egui::Slider::new(&mut self.freq_hz, 20.0..=18000.0).text("Frequency Hz").logarithmic(true));
             let reso_slider = ui.add(egui::Slider::new(&mut self.resonance_q, 0.707..=50.0).text("Resonance (Q)").logarithmic(true));
 
