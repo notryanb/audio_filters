@@ -1,17 +1,17 @@
 #![warn(clippy::all, rust_2018_idioms)]
 //#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on
-                                                                   // Windows in release mode
+// Windows in release mode
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::mpsc::channel;
 use atomic_float::AtomicF32;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::atomic::Ordering;
+use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
 mod app;
-use filters::StateVariableFilter;
+use filters::{StateVariableFilter, StateVariableTPTFilter};
 
-use crate::app::{AudioFilterApp, AudioCommand};
+use crate::app::{AudioCommand, AudioFilterApp};
 
 pub struct NoiseGen {
     noise_seed: u32,
@@ -56,20 +56,44 @@ fn main() -> eframe::Result {
 
         let host = cpal::default_host();
 
-        let device = host.default_output_device().expect("Failed to get default output device");
-        let config = device.default_output_config().expect("Failed to get default device config");
+        let device = host
+            .default_output_device()
+            .expect("Failed to get default output device");
+        let config = device
+            .default_output_config()
+            .expect("Failed to get default device config");
 
         let stream = match config.sample_format() {
-            cpal::SampleFormat::I8 =>  make_stream::<i8>(&device, &config.into(),  volume_clone, filter),
-            cpal::SampleFormat::I16 => make_stream::<i16>(&device, &config.into(), volume_clone, filter),
-            cpal::SampleFormat::I32 => make_stream::<i32>(&device, &config.into(), volume_clone, filter),
-            cpal::SampleFormat::I64 => make_stream::<i64>(&device, &config.into(), volume_clone, filter),
-            cpal::SampleFormat::U8 =>  make_stream::<u8>(&device, &config.into(),  volume_clone, filter),
-            cpal::SampleFormat::U16 => make_stream::<u16>(&device, &config.into(), volume_clone, filter),
-            cpal::SampleFormat::U32 => make_stream::<u32>(&device, &config.into(), volume_clone, filter),
-            cpal::SampleFormat::U64 => make_stream::<u64>(&device, &config.into(), volume_clone, filter),
-            cpal::SampleFormat::F32 => make_stream::<f32>(&device, &config.into(), volume_clone, filter),
-            cpal::SampleFormat::F64 => make_stream::<f64>(&device, &config.into(), volume_clone, filter),
+            cpal::SampleFormat::I8 => {
+                make_stream::<i8>(&device, &config.into(), volume_clone, filter)
+            }
+            cpal::SampleFormat::I16 => {
+                make_stream::<i16>(&device, &config.into(), volume_clone, filter)
+            }
+            cpal::SampleFormat::I32 => {
+                make_stream::<i32>(&device, &config.into(), volume_clone, filter)
+            }
+            cpal::SampleFormat::I64 => {
+                make_stream::<i64>(&device, &config.into(), volume_clone, filter)
+            }
+            cpal::SampleFormat::U8 => {
+                make_stream::<u8>(&device, &config.into(), volume_clone, filter)
+            }
+            cpal::SampleFormat::U16 => {
+                make_stream::<u16>(&device, &config.into(), volume_clone, filter)
+            }
+            cpal::SampleFormat::U32 => {
+                make_stream::<u32>(&device, &config.into(), volume_clone, filter)
+            }
+            cpal::SampleFormat::U64 => {
+                make_stream::<u64>(&device, &config.into(), volume_clone, filter)
+            }
+            cpal::SampleFormat::F32 => {
+                make_stream::<f32>(&device, &config.into(), volume_clone, filter)
+            }
+            cpal::SampleFormat::F64 => {
+                make_stream::<f64>(&device, &config.into(), volume_clone, filter)
+            }
             _sample_format => panic!("Unexpected sample format!!!"),
         };
 
@@ -81,27 +105,25 @@ fn main() -> eframe::Result {
         // make updates
         loop {
             match ui_rx.try_recv() {
-                Ok(cmd) => {
-                    match cmd {
-                        AudioCommand::SetVolume(new_vol) => { 
-                            volume.store(new_vol, Ordering::Relaxed);
-                        }
-                        AudioCommand::SetFilterFreq(cuttoff_freq_hz_new) => { 
-                            cutoff_freq_hz = cuttoff_freq_hz_new;
-                            {
-                                let mut filter = svf.lock().unwrap();
-                                filter.update_coefficients(cutoff_freq_hz, resonance_q);                                
-                            }
-                        }
-                        AudioCommand::SetResonance(resonance_q_new)  => {
-                            resonance_q = resonance_q_new;
-                            {
-                                let mut filter = svf.lock().unwrap();
-                                filter.update_coefficients(cutoff_freq_hz, resonance_q); 
-                            }
+                Ok(cmd) => match cmd {
+                    AudioCommand::SetVolume(new_vol) => {
+                        volume.store(new_vol, Ordering::Relaxed);
+                    }
+                    AudioCommand::SetFilterFreq(cuttoff_freq_hz_new) => {
+                        cutoff_freq_hz = cuttoff_freq_hz_new;
+                        {
+                            let mut filter = svf.lock().unwrap();
+                            filter.update_coefficients(cutoff_freq_hz, resonance_q);
                         }
                     }
-                }
+                    AudioCommand::SetResonance(resonance_q_new) => {
+                        resonance_q = resonance_q_new;
+                        {
+                            let mut filter = svf.lock().unwrap();
+                            filter.update_coefficients(cutoff_freq_hz, resonance_q);
+                        }
+                    }
+                },
                 Err(_) => (),
             }
         }
@@ -124,8 +146,14 @@ fn main() -> eframe::Result {
     )
 }
 
-fn make_stream<T>(device: &cpal::Device, config: &cpal::StreamConfig, volume: Arc<AtomicF32>, filter: Arc<Mutex<StateVariableFilter>>) -> cpal::Stream
-    where T: cpal::SizedSample + cpal::FromSample<f32> 
+fn make_stream<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    volume: Arc<AtomicF32>,
+    filter: Arc<Mutex<StateVariableFilter>>,
+) -> cpal::Stream
+where
+    T: cpal::SizedSample + cpal::FromSample<f32>,
 {
     let num_channels = config.channels as usize;
     let mut noise_gen = NoiseGen::new();
@@ -137,7 +165,13 @@ fn make_stream<T>(device: &cpal::Device, config: &cpal::StreamConfig, volume: Ar
             config,
             move |output: &mut [T], _: &cpal::OutputCallbackInfo| {
                 // process_frame(output, &mut noise_gen, &mut svf, vol, num_channels)
-                process_frame(output, &mut noise_gen, num_channels, volume.clone(), filter.clone())
+                process_frame(
+                    output,
+                    &mut noise_gen,
+                    num_channels,
+                    volume.clone(),
+                    filter.clone(),
+                )
             },
             err_fn,
             None,
@@ -148,13 +182,13 @@ fn make_stream<T>(device: &cpal::Device, config: &cpal::StreamConfig, volume: Ar
 }
 
 fn process_frame<SampleType>(
-    output: &mut [SampleType], 
-    noise_gen: &mut NoiseGen, 
+    output: &mut [SampleType],
+    noise_gen: &mut NoiseGen,
     num_channels: usize,
     volume: Arc<AtomicF32>,
-    filter: Arc<Mutex<StateVariableFilter>>
-)
-    where SampleType: cpal::Sample + cpal::FromSample<f32> 
+    filter: Arc<Mutex<StateVariableFilter>>,
+) where
+    SampleType: cpal::Sample + cpal::FromSample<f32>,
 {
     let volume = volume.load(Ordering::Relaxed);
 
