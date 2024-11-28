@@ -10,6 +10,67 @@ pub enum FilterType {
     BandPass,
 }
 
+pub struct BiQuadFilter {
+    sample_rate: f32,
+    b0: f32,
+    b1: f32,
+    b2: f32,
+    a0: f32,
+    a1: f32,
+    a2: f32,
+    x1: f32,
+    x2: f32,
+    y1: f32,
+    y2: f32,
+}
+
+impl BiQuadFilter {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate,
+            b0: 1.0,
+            a0: 1.0,
+            a1: 0.0,
+            a2: 0.0,
+            b1: 0.0,
+            b2: 0.0,
+            x1: 0.0,
+            x2: 0.0,
+            y1: 0.0,
+            y2: 0.0,
+        }
+    }
+
+    pub fn update_coefficients(&mut self, cutoff_frequency: f32, resonance: f32) {
+        let w0 = 2.0 * std::f32::consts::PI * cutoff_frequency / self.sample_rate;
+        let alpha = w0.sin() / (2.0 * resonance);
+
+        // Low Pass
+        //self.b0 = (1 - w0.cos()) / 2.0;
+        self.b1 = 1.0 - w0.cos();
+        self.b2 = (1.0 - w0.cos()) / 2.0;
+        self.a0 = 1.0 + alpha;
+        self.a1 = -2.0 * w0.cos();
+        self.a2 = 1.0 - alpha;
+    }
+
+    pub fn render(&mut self, input_sample: f32) -> f32 {
+        let yn = (self.b0 / self.a0) * input_sample
+            + (self.b1 / self.a0) * self.x1
+            + (self.b2 / self.a0) * self.x2
+            - (self.a1 / self.a0) * self.y1
+            - (self.a2 / self.a0) * self.y2;
+
+        self.x2 = self.x1;
+        self.x1 = input_sample;
+
+        self.y2 = self.y1;
+        self.y1 = yn;
+
+        yn
+    }
+}
+
 pub struct FirLowPassFilter {
     sample_rate: f32,
     s1: f32,

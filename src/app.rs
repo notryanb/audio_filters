@@ -3,7 +3,7 @@ use egui::{pos2, vec2, Frame, Pos2, Rect};
 use egui_plot::{Line, Plot, PlotPoints};
 use std::sync::mpsc::Sender;
 
-use crate::{FirLowPassFilter, StateVariableFilter, StateVariableTPTFilter};
+use crate::{BiQuadFilter, FirLowPassFilter, StateVariableFilter, StateVariableTPTFilter};
 
 pub enum AudioCommand {
     SetVolume(f32),
@@ -52,10 +52,11 @@ impl eframe::App for AudioFilterApp {
 
             let sample_rate = 44100;
 
-            let mut svf = FirLowPassFilter::new(sample_rate as f32);
+            let mut svf = BiQuadFilter::new(sample_rate as f32);
+            //let mut svf = FirLowPassFilter::new(sample_rate as f32);
             //let mut svf = StateVariableTPTFilter::new(sample_rate as f32);
             //let mut svf = StateVariableFilter::new(sample_rate as f32);
-            //svf.update_coefficients(2000.0, 0.707);
+            svf.update_coefficients(2000.0, 0.707);
             let mut impulse: Vec<f32> = (0..sample_rate).map(|_| 0.0).collect();
             impulse[0] = 1.0;
 
