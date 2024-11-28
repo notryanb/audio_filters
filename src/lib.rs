@@ -25,6 +25,7 @@ impl FirLowPassFilter {
         }
     }
 
+    // Difference Equation: y[n] = a0.x[n] + a1.x[n-1]
     pub fn render(&mut self, input_sample: f32) -> f32 {
         let y = self.s1 + self.s2 + input_sample;
 
