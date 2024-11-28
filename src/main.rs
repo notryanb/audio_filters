@@ -9,7 +9,7 @@ use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
 mod app;
-use filters::{StateVariableFilter, StateVariableTPTFilter};
+use filters::{FirLowPassFilter, StateVariableFilter, StateVariableTPTFilter};
 
 use crate::app::{AudioCommand, AudioFilterApp};
 

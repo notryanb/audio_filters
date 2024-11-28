@@ -10,6 +10,31 @@ pub enum FilterType {
     BandPass,
 }
 
+pub struct FirLowPassFilter {
+    sample_rate: f32,
+    s1: f32,
+    s2: f32,
+}
+
+impl FirLowPassFilter {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate,
+            s1: 0.0,
+            s2: 0.0,
+        }
+    }
+
+    pub fn render(&mut self, input_sample: f32) -> f32 {
+        let y = self.s1 + self.s2 + input_sample;
+
+        //self.s2 = self.s1; // Playing with additional state delays
+        self.s1 = input_sample;
+
+        y
+    }
+}
+
 // JUCE implementation of juce_StateVariableTPTFilter
 pub struct StateVariableTPTFilter {
     pub sample_rate: f32,
