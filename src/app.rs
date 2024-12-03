@@ -99,7 +99,7 @@ impl eframe::App for AudioFilterApp {
                     .logarithmic(true),
             );
             let reso_slider = ui.add(
-                egui::Slider::new(&mut self.resonance_q, 0.707..=50.0)
+                egui::Slider::new(&mut self.resonance_q, 0.1..=30.0)
                     .text("Resonance (Q)")
                     .logarithmic(true),
             );
@@ -126,16 +126,20 @@ impl eframe::App for AudioFilterApp {
 
             // for 0 to half-nyquist, plot frequency response
             if let Some(filter_freq_res) = &self.filter_freq_res {
-                let sin: PlotPoints = filter_freq_res
+                let fft: PlotPoints = filter_freq_res
                     .iter()
                     .enumerate()
                     .map(|(x, y)| [x as f64, *y as f64])
                     .collect();
-                let line = Line::new(sin);
+                let line = Line::new(fft);
+                //let bounds = egui_plot::PlotBounds::from_min_max([0.0, -100.0], [23000.0, 60.0])
                 Plot::new("frequencies")
+                    .allow_drag(true)
+                    .allow_scroll(true)
                     .view_aspect(2.0)
-                    //.auto_bounds(false.into())
-                    //.data_aspect(1.0)
+                    .x_axis_label("Frequency Hz")
+                    .y_axis_label("dB")
+                    //.x_grid_spacer(egui_plot::log_grid_spacer(10))
                     .show(ui, |plot_ui| plot_ui.line(line));
             }
         });
