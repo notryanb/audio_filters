@@ -37,17 +37,18 @@ impl NoiseGen {
 fn main() -> eframe::Result {
     env_logger::init();
 
+    let mut cutoff_freq_hz = 1000.0;
+    let mut resonance_q = 0.707;
     let svf = Arc::new(Mutex::new(StateVariableFilter::new(44100.0)));
     {
         let mut f = svf.lock().unwrap();
         f.reset();
+        f.update_coefficients(cutoff_freq_hz, resonance_q);
     }
 
     // I don't want to store everything in a mutex, so at least for now keep the volume as an Atomic and pass the filter behind
     // an Arc<Mutex>
     let volume = std::sync::Arc::new(AtomicF32::new(0.3));
-    let mut cutoff_freq_hz = 1000.0;
-    let mut resonance_q = 0.707;
     let (ui_tx, ui_rx) = channel::<crate::app::AudioCommand>();
 
     let _audio_thread = std::thread::spawn(move || {

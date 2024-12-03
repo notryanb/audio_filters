@@ -17,6 +17,7 @@ pub struct AudioFilterApp {
     pub resonance_q: f32,
     pub audio_tx: Option<Sender<crate::app::AudioCommand>>,
     pub filter_freq_res: Option<Vec<f32>>,
+    pub coefficients_changed: bool,
 }
 
 impl Default for AudioFilterApp {
@@ -27,6 +28,7 @@ impl Default for AudioFilterApp {
             resonance_q: 0.707,
             audio_tx: None,
             filter_freq_res: None,
+            coefficients_changed: false,
         }
     }
 }
@@ -46,17 +48,17 @@ impl eframe::App for AudioFilterApp {
     fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if *(&self.filter_freq_res.is_none()) {
+        let sample_rate = 44100;
+
+        if *(&self.filter_freq_res.is_none()) || self.coefficients_changed {
             use realfft::num_complex::ComplexFloat;
             use realfft::RealFftPlanner;
-
-            let sample_rate = 44100;
 
             let mut svf = BiQuadFilter::new(sample_rate as f32);
             //let mut svf = FirLowPassFilter::new(sample_rate as f32);
             //let mut svf = StateVariableTPTFilter::new(sample_rate as f32);
             //let mut svf = StateVariableFilter::new(sample_rate as f32);
-            svf.update_coefficients(2000.0, 0.707);
+            svf.update_coefficients(self.freq_hz, self.resonance_q);
             let mut impulse: Vec<f32> = (0..sample_rate).map(|_| 0.0).collect();
             impulse[0] = 1.0;
 
@@ -88,6 +90,8 @@ impl eframe::App for AudioFilterApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            self.coefficients_changed = false;
+
             let volume_slider = ui.add(egui::Slider::new(&mut self.vol, 0.0..=1.0).text("Volume"));
             let freq_slider = ui.add(
                 egui::Slider::new(&mut self.freq_hz, 20.0..=18000.0)
@@ -110,12 +114,14 @@ impl eframe::App for AudioFilterApp {
                 if let Some(tx) = &self.audio_tx {
                     _ = tx.send(AudioCommand::SetFilterFreq(self.freq_hz));
                 }
+                self.coefficients_changed = true;
             }
 
             if reso_slider.dragged() {
                 if let Some(tx) = &self.audio_tx {
                     _ = tx.send(AudioCommand::SetResonance(self.resonance_q));
                 }
+                self.coefficients_changed = true;
             }
 
             // for 0 to half-nyquist, plot frequency response
@@ -128,6 +134,8 @@ impl eframe::App for AudioFilterApp {
                 let line = Line::new(sin);
                 Plot::new("frequencies")
                     .view_aspect(2.0)
+                    //.auto_bounds(false.into())
+                    //.data_aspect(1.0)
                     .show(ui, |plot_ui| plot_ui.line(line));
             }
         });
