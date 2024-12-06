@@ -9,7 +9,10 @@ use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
 mod app;
-use filters::{BiQuadFilter, FirLowPassFilter, StateVariableFilter, StateVariableTPTFilter};
+use filters::{
+    BiQuadFilter, Filter, FirLowPassFilter, SelectedFilter, StateVariableFilter,
+    StateVariableTPTFilter,
+};
 
 use crate::app::{AudioCommand, AudioFilterApp};
 
@@ -39,7 +42,10 @@ fn main() -> eframe::Result {
 
     let mut cutoff_freq_hz = 1000.0;
     let mut resonance_q = 0.707;
-    let svf = Arc::new(Mutex::new(StateVariableFilter::new(44100.0)));
+    let mut selected_filter = SelectedFilter::StateVariable;
+    let svf: Arc<Mutex<Box<dyn Filter>>> =
+        Arc::new(Mutex::new(Box::new(StateVariableFilter::new(44100.0))));
+
     {
         let mut f = svf.lock().unwrap();
         f.reset();
@@ -54,6 +60,8 @@ fn main() -> eframe::Result {
     let _audio_thread = std::thread::spawn(move || {
         let volume_clone = volume.clone();
         let filter = svf.clone();
+        let selected_filter = selected_filter.clone();
+        let sample_rate = 44100;
 
         let host = cpal::default_host();
 
@@ -124,6 +132,42 @@ fn main() -> eframe::Result {
                             filter.update_coefficients(cutoff_freq_hz, resonance_q);
                         }
                     }
+                    AudioCommand::SetSelectedFilter(sel_fil) => {
+                        match sel_fil {
+                            SelectedFilter::BiQuad => {
+                                let mut f = BiQuadFilter::new(sample_rate as f32);
+                                f.update_coefficients(cutoff_freq_hz, resonance_q);
+                                {
+                                    let mut filter = svf.lock().unwrap();
+                                    *filter = Box::new(f);
+                                }
+                            }
+                            SelectedFilter::FirLowPass => {
+                                let mut f = FirLowPassFilter::new(sample_rate as f32);
+                                f.update_coefficients(cutoff_freq_hz, resonance_q);
+                                {
+                                    let mut filter = svf.lock().unwrap();
+                                    *filter = Box::new(f);
+                                }
+                            }
+                            SelectedFilter::StateVariable => {
+                                let mut f = StateVariableFilter::new(sample_rate as f32);
+                                f.update_coefficients(cutoff_freq_hz, resonance_q);
+                                {
+                                    let mut filter = svf.lock().unwrap();
+                                    *filter = Box::new(f);
+                                }
+                            }
+                            SelectedFilter::StateVariableTPT => {
+                                let mut f = StateVariableTPTFilter::new(sample_rate as f32);
+                                f.update_coefficients(cutoff_freq_hz, resonance_q);
+                                {
+                                    let mut filter = svf.lock().unwrap();
+                                    *filter = Box::new(f);
+                                }
+                            }
+                        };
+                    }
                 },
                 Err(_) => (),
             }
@@ -139,6 +183,7 @@ fn main() -> eframe::Result {
 
     let mut app = AudioFilterApp::new();
     app.audio_tx = Some(ui_tx);
+    app.selected_filter = selected_filter;
 
     eframe::run_native(
         "Audio Filters",
@@ -151,7 +196,7 @@ fn make_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     volume: Arc<AtomicF32>,
-    filter: Arc<Mutex<StateVariableFilter>>,
+    filter: Arc<Mutex<Box<dyn Filter>>>,
 ) -> cpal::Stream
 where
     T: cpal::SizedSample + cpal::FromSample<f32>,
@@ -187,7 +232,7 @@ fn process_frame<SampleType>(
     noise_gen: &mut NoiseGen,
     num_channels: usize,
     volume: Arc<AtomicF32>,
-    filter: Arc<Mutex<StateVariableFilter>>,
+    filter: Arc<Mutex<Box<dyn Filter>>>,
 ) where
     SampleType: cpal::Sample + cpal::FromSample<f32>,
 {

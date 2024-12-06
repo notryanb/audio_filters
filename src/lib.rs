@@ -4,10 +4,24 @@ mod app;
 
 pub use app::AudioFilterApp;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SelectedFilter {
+    BiQuad,
+    FirLowPass,
+    StateVariableTPT,
+    StateVariable,
+}
+
 pub enum FilterType {
     LowPass,
     HighPass,
     BandPass,
+}
+
+pub trait Filter: Send {
+    fn reset(&mut self);
+    fn render(&mut self, input_sample: f32) -> f32;
+    fn update_coefficients(&mut self, cutoff_freq: f32, reso: f32);
 }
 
 pub struct BiQuadFilter {
@@ -40,8 +54,12 @@ impl BiQuadFilter {
             y2: 0.0,
         }
     }
+}
 
-    pub fn update_coefficients(&mut self, cutoff_frequency: f32, resonance: f32) {
+impl Filter for BiQuadFilter {
+    fn reset(&mut self) {}
+
+    fn update_coefficients(&mut self, cutoff_frequency: f32, resonance: f32) {
         let w0 = 2.0 * std::f32::consts::PI * cutoff_frequency / self.sample_rate;
         let alpha = w0.sin() / (2.0 * resonance);
 
@@ -54,7 +72,7 @@ impl BiQuadFilter {
         self.a2 = 1.0 - alpha;
     }
 
-    pub fn render(&mut self, input_sample: f32) -> f32 {
+    fn render(&mut self, input_sample: f32) -> f32 {
         let yn = (self.b0 / self.a0) * input_sample
             + (self.b1 / self.a0) * self.x1
             + (self.b2 / self.a0) * self.x2
@@ -85,9 +103,14 @@ impl FirLowPassFilter {
             s2: 0.0,
         }
     }
+}
+
+impl Filter for FirLowPassFilter {
+    fn reset(&mut self) {}
+    fn update_coefficients(&mut self, _cutoff_freq: f32, _resonance: f32) {}
 
     // Difference Equation: y[n] = a0.x[n] + a1.x[n-1]
-    pub fn render(&mut self, input_sample: f32) -> f32 {
+    fn render(&mut self, input_sample: f32) -> f32 {
         let y = self.s1 + self.s2 + input_sample;
 
         //self.s2 = self.s1; // Playing with additional state delays
@@ -122,14 +145,25 @@ impl StateVariableTPTFilter {
             s2: 0.0,
         }
     }
+}
 
-    pub fn update_coefficients(&mut self, cutoff_freq: f32, resonance: f32) {
+impl Filter for StateVariableTPTFilter {
+    fn reset(&mut self) {
+        self.filter_type = FilterType::BandPass;
+        self.g = 0.0;
+        self.h = 0.0;
+        self.r2 = 0.0;
+        self.s1 = 0.0;
+        self.s2 = 0.0;
+    }
+
+    fn update_coefficients(&mut self, cutoff_freq: f32, resonance: f32) {
         self.g = (std::f32::consts::PI * cutoff_freq / self.sample_rate).tan();
         self.r2 = 1.0 / resonance;
         self.h = 1.0 / (1.0 + self.r2 * self.g + self.g * self.g);
     }
 
-    pub fn render(&mut self, input_sample: f32) -> f32 {
+    fn render(&mut self, input_sample: f32) -> f32 {
         let y_high_pass = self.h * (input_sample - self.s1 * (self.g + self.r2) - self.s2);
         let y_band_pass = y_high_pass * self.g + self.s1;
         self.s1 = y_high_pass * self.g + y_band_pass;
@@ -169,8 +203,10 @@ impl StateVariableFilter {
             ic2eq: 0.0,
         }
     }
+}
 
-    pub fn reset(&mut self) {
+impl Filter for StateVariableFilter {
+    fn reset(&mut self) {
         self.g = 0.0;
         self.k = 0.0;
         self.a1 = 0.0;
@@ -180,7 +216,7 @@ impl StateVariableFilter {
         self.ic2eq = 0.0;
     }
 
-    pub fn update_coefficients(&mut self, cutoff: f32, q: f32) {
+    fn update_coefficients(&mut self, cutoff: f32, q: f32) {
         self.g = (std::f32::consts::PI * cutoff / self.sample_rate).tan();
         self.k = 1.0 / q;
         self.a1 = 1.0 / (1.0 + self.g * (self.g + self.k));
@@ -188,7 +224,7 @@ impl StateVariableFilter {
         self.a3 = self.g * self.a2;
     }
 
-    pub fn render(&mut self, sample: f32) -> f32 {
+    fn render(&mut self, sample: f32) -> f32 {
         // v1..v3 are voltages at different nodes
         let v3 = sample - self.ic2eq;
         let v1 = self.a1 * self.ic1eq + self.a2 * v3;

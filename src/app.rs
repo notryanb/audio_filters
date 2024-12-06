@@ -2,13 +2,18 @@ use egui::epaint::*;
 use egui::{pos2, vec2, Frame, Pos2, Rect};
 use egui_plot::{Line, Plot, PlotPoints};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
-use crate::{BiQuadFilter, FirLowPassFilter, StateVariableFilter, StateVariableTPTFilter};
+use crate::{
+    BiQuadFilter, Filter, FirLowPassFilter, SelectedFilter, StateVariableFilter,
+    StateVariableTPTFilter,
+};
 
 pub enum AudioCommand {
     SetVolume(f32),
     SetFilterFreq(f32),
     SetResonance(f32),
+    SetSelectedFilter(SelectedFilter),
 }
 
 pub struct AudioFilterApp {
@@ -18,6 +23,8 @@ pub struct AudioFilterApp {
     pub audio_tx: Option<Sender<crate::app::AudioCommand>>,
     pub filter_freq_res: Option<Vec<f32>>,
     pub coefficients_changed: bool,
+    pub selected_filter_changed: bool,
+    pub selected_filter: SelectedFilter,
 }
 
 impl Default for AudioFilterApp {
@@ -29,6 +36,8 @@ impl Default for AudioFilterApp {
             audio_tx: None,
             filter_freq_res: None,
             coefficients_changed: false,
+            selected_filter_changed: false,
+            selected_filter: SelectedFilter::StateVariable,
         }
     }
 }
@@ -50,22 +59,50 @@ impl eframe::App for AudioFilterApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let sample_rate = 44100;
 
-        if *(&self.filter_freq_res.is_none()) || self.coefficients_changed {
+        if *(&self.filter_freq_res.is_none())
+            || self.coefficients_changed
+            || self.selected_filter_changed
+        {
             use realfft::num_complex::ComplexFloat;
             use realfft::RealFftPlanner;
 
-            let mut svf = BiQuadFilter::new(sample_rate as f32);
-            //let mut svf = FirLowPassFilter::new(sample_rate as f32);
-            //let mut svf = StateVariableTPTFilter::new(sample_rate as f32);
-            //let mut svf = StateVariableFilter::new(sample_rate as f32);
-            svf.update_coefficients(self.freq_hz, self.resonance_q);
             let mut impulse: Vec<f32> = (0..sample_rate).map(|_| 0.0).collect();
             impulse[0] = 1.0;
 
-            let mut impulse_response = impulse
-                .iter()
-                .map(|sample| svf.render(*sample))
-                .collect::<Vec<f32>>();
+            let mut impulse_response = match self.selected_filter {
+                SelectedFilter::BiQuad => {
+                    let mut svf = BiQuadFilter::new(sample_rate as f32);
+                    svf.update_coefficients(self.freq_hz, self.resonance_q);
+                    impulse
+                        .iter()
+                        .map(|sample| svf.render(*sample))
+                        .collect::<Vec<f32>>()
+                }
+                SelectedFilter::FirLowPass => {
+                    let mut svf = FirLowPassFilter::new(sample_rate as f32);
+                    svf.update_coefficients(self.freq_hz, self.resonance_q);
+                    impulse
+                        .iter()
+                        .map(|sample| svf.render(*sample))
+                        .collect::<Vec<f32>>()
+                }
+                SelectedFilter::StateVariable => {
+                    let mut svf = StateVariableFilter::new(sample_rate as f32);
+                    svf.update_coefficients(self.freq_hz, self.resonance_q);
+                    impulse
+                        .iter()
+                        .map(|sample| svf.render(*sample))
+                        .collect::<Vec<f32>>()
+                }
+                SelectedFilter::StateVariableTPT => {
+                    let mut svf = StateVariableTPTFilter::new(sample_rate as f32);
+                    svf.update_coefficients(self.freq_hz, self.resonance_q);
+                    impulse
+                        .iter()
+                        .map(|sample| svf.render(*sample))
+                        .collect::<Vec<f32>>()
+                }
+            };
 
             let mut real_planner = RealFftPlanner::<f32>::new();
             let r2c = real_planner.plan_fft_forward(sample_rate);
@@ -91,6 +128,34 @@ impl eframe::App for AudioFilterApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             self.coefficients_changed = false;
+            self.selected_filter_changed = false;
+
+            let mut selected = self.selected_filter;
+
+            egui::ComboBox::from_label("Filter Type")
+                .selected_text(format!("{:?}", selected))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut selected,
+                        SelectedFilter::StateVariable,
+                        "StateVariable",
+                    );
+                    ui.selectable_value(
+                        &mut selected,
+                        SelectedFilter::StateVariableTPT,
+                        "StateVariableTPT",
+                    );
+                    ui.selectable_value(&mut selected, SelectedFilter::FirLowPass, "FIR LowPass");
+                    ui.selectable_value(&mut selected, SelectedFilter::BiQuad, "BiQuad");
+                });
+
+            if self.selected_filter != selected {
+                self.selected_filter = selected;
+                self.selected_filter_changed = true;
+                if let Some(tx) = &self.audio_tx {
+                    _ = tx.send(AudioCommand::SetSelectedFilter(self.selected_filter));
+                }
+            }
 
             let volume_slider = ui.add(egui::Slider::new(&mut self.vol, 0.0..=1.0).text("Volume"));
             let freq_slider = ui.add(
