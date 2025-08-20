@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 mod app;
 use filters::{
-    BiQuadFilter, Filter, FirLowPassFilter, SelectedFilter, StateVariableFilter,
+    BiQuadFilter, Filter, FirHighPassFilter, FirLowPassFilter, SelectedFilter, StateVariableFilter,
     StateVariableTPTFilter,
 };
 
@@ -144,6 +144,14 @@ fn main() -> eframe::Result {
                             }
                             SelectedFilter::FirLowPass => {
                                 let mut f = FirLowPassFilter::new(sample_rate as f32);
+                                f.update_coefficients(cutoff_freq_hz, resonance_q);
+                                {
+                                    let mut filter = svf.lock().unwrap();
+                                    *filter = Box::new(f);
+                                }
+                            }
+                            SelectedFilter::FirHighPass => {
+                                let mut f = FirHighPassFilter::new(sample_rate as f32);
                                 f.update_coefficients(cutoff_freq_hz, resonance_q);
                                 {
                                     let mut filter = svf.lock().unwrap();

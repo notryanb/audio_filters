@@ -5,7 +5,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    BiQuadFilter, Filter, FirLowPassFilter, SelectedFilter, StateVariableFilter,
+    BiQuadFilter, Filter, FirHighPassFilter, FirLowPassFilter, SelectedFilter, StateVariableFilter,
     StateVariableTPTFilter,
 };
 
@@ -21,7 +21,9 @@ pub struct AudioFilterApp {
     pub freq_hz: f32,
     pub resonance_q: f32,
     pub audio_tx: Option<Sender<crate::app::AudioCommand>>,
+    // The magnitude response.
     pub filter_freq_res: Option<Vec<f32>>,
+    pub phase_res: Option<Vec<f32>>,
     pub coefficients_changed: bool,
     pub selected_filter_changed: bool,
     pub selected_filter: SelectedFilter,
@@ -35,6 +37,7 @@ impl Default for AudioFilterApp {
             resonance_q: 0.707,
             audio_tx: None,
             filter_freq_res: None,
+            phase_res: None,
             coefficients_changed: false,
             selected_filter_changed: false,
             selected_filter: SelectedFilter::StateVariable,
@@ -86,6 +89,14 @@ impl eframe::App for AudioFilterApp {
                         .map(|sample| svf.render(*sample))
                         .collect::<Vec<f32>>()
                 }
+                SelectedFilter::FirHighPass => {
+                    let mut svf = FirHighPassFilter::new(sample_rate as f32);
+                    svf.update_coefficients(self.freq_hz, self.resonance_q);
+                    impulse
+                        .iter()
+                        .map(|sample| svf.render(*sample))
+                        .collect::<Vec<f32>>()
+                }
                 SelectedFilter::StateVariable => {
                     let mut svf = StateVariableFilter::new(sample_rate as f32);
                     svf.update_coefficients(self.freq_hz, self.resonance_q);
@@ -117,6 +128,13 @@ impl eframe::App for AudioFilterApp {
                 spectrum
                     .iter()
                     .map(|f| (f.re.abs() + std::f32::EPSILON).log10() * 20.0)
+                    // .map(|f| (f.im * f.im + f.re * f.re).sqrt().log10() * 20.0)
+                    .collect(),
+            );
+            self.phase_res = Some(
+                spectrum
+                    .iter()
+                    .map(|f| f.im.atan2(f.re) * 180.0 / std::f32::consts::PI)
                     .collect(),
             );
             //self.filter_freq_res = Some(impulse_response);
@@ -146,6 +164,7 @@ impl eframe::App for AudioFilterApp {
                         "StateVariableTPT",
                     );
                     ui.selectable_value(&mut selected, SelectedFilter::FirLowPass, "FIR LowPass");
+                    ui.selectable_value(&mut selected, SelectedFilter::FirHighPass, "FIR HighPass");
                     ui.selectable_value(&mut selected, SelectedFilter::BiQuad, "BiQuad");
                 });
 
@@ -198,12 +217,32 @@ impl eframe::App for AudioFilterApp {
                     .collect();
                 let line = Line::new(fft);
                 //let bounds = egui_plot::PlotBounds::from_min_max([0.0, -100.0], [23000.0, 60.0])
+
+                // TODO: Plot frequency in log scale
                 Plot::new("frequencies")
                     .allow_drag(true)
                     .allow_scroll(true)
                     .view_aspect(2.0)
                     .x_axis_label("Frequency Hz")
                     .y_axis_label("dB")
+                    //.x_grid_spacer(egui_plot::log_grid_spacer(10))
+                    .show(ui, |plot_ui| plot_ui.line(line));
+            }
+
+            if let Some(phase_res) = &self.phase_res {
+                let phase_plot: PlotPoints = phase_res
+                    .iter()
+                    .enumerate()
+                    .map(|(x, y)| [x as f64, *y as f64])
+                    .collect();
+                let line = Line::new(phase_plot);
+
+                Plot::new("phase response")
+                    .allow_drag(true)
+                    .allow_scroll(true)
+                    .view_aspect(2.0)
+                    .x_axis_label("Frequency Hz")
+                    .y_axis_label("phase degrees")
                     //.x_grid_spacer(egui_plot::log_grid_spacer(10))
                     .show(ui, |plot_ui| plot_ui.line(line));
             }

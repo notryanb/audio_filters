@@ -8,6 +8,7 @@ pub use app::AudioFilterApp;
 pub enum SelectedFilter {
     BiQuad,
     FirLowPass,
+    FirHighPass,
     StateVariableTPT,
     StateVariable,
 }
@@ -113,7 +114,38 @@ impl Filter for FirLowPassFilter {
     fn render(&mut self, input_sample: f32) -> f32 {
         let y = self.s1 + self.s2 + input_sample;
 
-        //self.s2 = self.s1; // Playing with additional state delays
+        // self.s2 = self.s1; // Playing with additional state delays
+        self.s1 = input_sample;
+
+        y
+    }
+}
+
+pub struct FirHighPassFilter {
+    sample_rate: f32,
+    s1: f32,
+    s2: f32,
+}
+
+impl FirHighPassFilter {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate,
+            s1: 0.0,
+            s2: 0.0,
+        }
+    }
+}
+
+impl Filter for FirHighPassFilter {
+    fn reset(&mut self) {}
+    fn update_coefficients(&mut self, _cutoff_freq: f32, _resonance: f32) {}
+
+    // Difference Equation: y[n] = a0.x[n] - a1.x[n-1]
+    fn render(&mut self, input_sample: f32) -> f32 {
+        let y = input_sample - self.s1 - self.s2;
+
+        // self.s2 = self.s1; // Playing with additional state delays
         self.s1 = input_sample;
 
         y
